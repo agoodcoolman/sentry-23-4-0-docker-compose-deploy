@@ -12,7 +12,7 @@
 ## 2. 目录结构与持久化数据
 
 - `docker-compose.yml`：服务编排
-- `start.sh`：初始化脚本（生成并保存 Redis 密码到 `.env.custom`，首次启动并执行 `sentry upgrade`）
+- `start.sh`：初始化脚本（生成并保存关键配置到 `.env.custom`，首次启动并执行 `sentry upgrade`）
 - `up.sh`：后续启动脚本（读取 `.env.custom`，仅执行 `docker compose up -d`，不执行迁移）
 - `README-INTEGRATION.md`：Sentry 使用与对接指南（创建项目/获取 DSN/前端与后端 SDK 接入/GitHub 集成要点）
 - `export-images.sh`：一键把本 `docker-compose.yml` 涉及到的所有镜像 `docker save` 打包为 tar（便于离线搬运），并给出 `docker load` 恢复命令
@@ -28,13 +28,15 @@
 > 注意：
 >
 >- `start.sh` 会自动创建 `./data/*` 目录。
->- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`），请不要提交到公开仓库。
+>- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等），请不要提交到公开仓库。
 
 ## 3. 重要配置项（必须改）
 
 ### 3.1 SENTRY_SECRET_KEY
 
-你需要把 `docker-compose.yml` 里的 `SENTRY_SECRET_KEY` 改为强随机值。
+本项目会在首次执行 `start.sh` 时自动生成并写入 `.env.custom` 中的 `SENTRY_SECRET_KEY`。
+
+你也可以手动编辑 `.env.custom` 覆盖：
 
 - **建议长度至少 32 位**
 - **不要在公开仓库暴露**
@@ -45,9 +47,7 @@
 openssl rand -hex 32
 ```
 
-然后替换 `docker-compose.yml` 中的：
-
-- `SENTRY_SECRET_KEY: 'please-change-me-to-a-secure-key'`
+然后把 `.env.custom` 里的 `SENTRY_SECRET_KEY` 改成该值。
 
 ### 3.2 端口
 
@@ -117,7 +117,7 @@ sh start.sh
 
 脚本会做这些事：
 
-- 生成并保存 Redis 密码到 `.env.custom`（后续启动会复用）
+- 生成并保存关键配置到 `.env.custom`（后续启动会复用），包括：`REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等
 - `docker compose down --remove-orphans`
 - 启动依赖：postgres/redis/zookeeper/kafka/clickhouse
 - 启动 snuba + sentry + symbolicator
@@ -130,6 +130,43 @@ sh start.sh
 ```bash
 sh up.sh
 ```
+
+### 4.1.2 修改配置如何生效（重要）
+
+本项目把关键配置持久化在 `.env.custom` 中。你可以直接编辑 `.env.custom` 来修改：
+
+- `SENTRY_SECRET_KEY`
+- `SENTRY_DB_NAME` / `SENTRY_DB_USER` / `SENTRY_DB_PASSWORD`
+- `SENTRY_POSTGRES_HOST`
+- `SENTRY_REDIS_HOST`
+- `REDIS_PASSWORD`
+
+修改后让配置生效的方式：
+
+- **仅启动/拉起服务**（适用于容器已存在，只是停止了）：
+
+  ```bash
+  sh up.sh
+  ```
+
+- **重建容器（推荐，确保环境变量一定刷新）**：
+
+  ```bash
+  docker compose -f docker-compose.yml up -d --force-recreate
+  ```
+
+- **配置变更较大/需要清理依赖时**：
+
+  ```bash
+  docker compose -f docker-compose.yml down --remove-orphans
+  sh up.sh
+  ```
+
+注意事项：
+
+- **修改 `REDIS_PASSWORD`**：需要重建 `redis` 容器（并建议同时重建 sentry 相关容器），否则运行中的进程可能仍使用旧连接。
+- **修改 `SENTRY_DB_PASSWORD` / `SENTRY_DB_USER` / `SENTRY_DB_NAME`**：如果你已经有历史数据（`./data/postgres`），改动可能导致无法连接或需要手工迁移/重建数据库。
+- **不要随意修改 `SENTRY_SECRET_KEY`**：修改会导致现有登录会话等失效，建议只在首次部署时确定并固定。
 
 ### 4.2 创建管理员账号（首次登录必须）
 

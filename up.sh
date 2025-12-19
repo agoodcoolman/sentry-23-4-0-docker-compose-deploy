@@ -19,14 +19,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # shellcheck disable=SC1090
+set -a
 source "$ENV_FILE" || true
+set +a
 
 if [[ -z "${REDIS_PASSWORD:-}" ]]; then
   echo "$ENV_FILE 中未找到 REDIS_PASSWORD，请先执行初始化脚本：sh start.sh"
   exit 1
 fi
-
-export REDIS_PASSWORD
 
 echo "使用 $ENV_FILE 启动/拉起服务（不执行迁移）..."
 $DC -f "${COMPOSE_FILE}" up -d
