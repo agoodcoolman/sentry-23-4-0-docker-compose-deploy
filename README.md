@@ -28,7 +28,7 @@
 > 注意：
 >
 >- `start.sh` 会自动创建 `./data/*` 目录。
->- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等），请不要提交到公开仓库。
+>- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等；如你启用自动创建管理员，还可能包含管理员账号密码），请不要提交到公开仓库。
 
 ## 3. 重要配置项（必须改）
 
@@ -140,6 +140,7 @@ sh up.sh
 - `SENTRY_POSTGRES_HOST`
 - `SENTRY_REDIS_HOST`
 - `REDIS_PASSWORD`
+- `SENTRY_ADMIN_EMAIL` / `SENTRY_ADMIN_PASSWORD` / `SENTRY_ADMIN_SUPERUSER`（可选：用于自动创建管理员）
 
 修改后让配置生效的方式：
 
@@ -183,6 +184,28 @@ docker compose -f docker-compose.yml run --rm sentry-web sentry createuser
 - is superuser（建议 yes）
 
 创建完成后，用该 email/password 登录 Web。
+
+如果你希望在服务器上“一键初始化 + 自动创建管理员（非交互）”，可以在 `.env.custom` 中提前填好：
+
+```bash
+SENTRY_ADMIN_EMAIL=admin@example.com
+SENTRY_ADMIN_PASSWORD=your-strong-password
+SENTRY_ADMIN_SUPERUSER=1
+```
+
+然后执行初始化脚本：
+
+```bash
+sh start.sh
+```
+
+脚本会在执行完 `sentry upgrade --noinput` 后，尝试运行：
+
+```bash
+docker compose -f docker-compose.yml run --rm sentry-web sentry createuser --email admin@example.com --password your-strong-password --superuser --no-input
+```
+
+> 注意：管理员密码写入 `.env.custom` 属于明文落盘，请妥善控制权限，并确保不要提交到公开仓库。
 
 ### 4.3 忘记密码 / 重置密码
 

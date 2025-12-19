@@ -9,6 +9,7 @@ DEFAULT_POSTGRES_DB="sentry"
 DEFAULT_POSTGRES_USER="sentry"
 DEFAULT_POSTGRES_PASSWORD="sentry"
 DEFAULT_REDIS_HOST="redis"
+DEFAULT_ADMIN_SUPERUSER="1"
 
 generate_secret() {
   if command -v openssl &>/dev/null; then
@@ -31,11 +32,16 @@ upsert_env_kv() {
   local v="$2"
 
   local tmp="${ENV_FILE}.tmp"
+  local line
+  line="${k}=$(printf '%q' "$v")"
+
   if [[ -f "$ENV_FILE" ]]; then
-    awk -v k="$k" -v v="$v" 'BEGIN{found=0} $0 ~ "^"k"=" {print k"="v; found=1; next} {print} END{if(!found) print k"="v}' "$ENV_FILE" > "$tmp"
+    grep -v -e "^${k}=" "$ENV_FILE" > "$tmp" || true
+    printf '%s\n' "$line" >> "$tmp"
   else
-    printf '%s=%s\n' "$k" "$v" > "$tmp"
+    printf '%s\n' "$line" > "$tmp"
   fi
+
   mv "$tmp" "$ENV_FILE"
 }
 
@@ -50,6 +56,7 @@ ensure_env_file() {
   SENTRY_DB_USER="${SENTRY_DB_USER:-$DEFAULT_POSTGRES_USER}"
   SENTRY_DB_PASSWORD="${SENTRY_DB_PASSWORD:-$DEFAULT_POSTGRES_PASSWORD}"
   SENTRY_REDIS_HOST="${SENTRY_REDIS_HOST:-$DEFAULT_REDIS_HOST}"
+  SENTRY_ADMIN_SUPERUSER="${SENTRY_ADMIN_SUPERUSER:-$DEFAULT_ADMIN_SUPERUSER}"
 
   if [[ -z "${REDIS_PASSWORD:-}" || "${REDIS_PASSWORD:-}" == "please-change-me" ]]; then
     REDIS_PASSWORD="$(generate_secret)"
@@ -67,7 +74,17 @@ ensure_env_file() {
   upsert_env_kv "REDIS_PASSWORD" "$REDIS_PASSWORD"
   upsert_env_kv "SENTRY_SECRET_KEY" "$SENTRY_SECRET_KEY"
 
-  export SENTRY_POSTGRES_HOST SENTRY_DB_NAME SENTRY_DB_USER SENTRY_DB_PASSWORD SENTRY_REDIS_HOST REDIS_PASSWORD SENTRY_SECRET_KEY
+  if [[ -n "${SENTRY_ADMIN_EMAIL:-}" ]]; then
+    upsert_env_kv "SENTRY_ADMIN_EMAIL" "$SENTRY_ADMIN_EMAIL"
+  fi
+  if [[ -n "${SENTRY_ADMIN_PASSWORD:-}" ]]; then
+    upsert_env_kv "SENTRY_ADMIN_PASSWORD" "$SENTRY_ADMIN_PASSWORD"
+  fi
+  if [[ -n "${SENTRY_ADMIN_SUPERUSER:-}" ]]; then
+    upsert_env_kv "SENTRY_ADMIN_SUPERUSER" "$SENTRY_ADMIN_SUPERUSER"
+  fi
+
+  export SENTRY_POSTGRES_HOST SENTRY_DB_NAME SENTRY_DB_USER SENTRY_DB_PASSWORD SENTRY_REDIS_HOST REDIS_PASSWORD SENTRY_SECRET_KEY SENTRY_ADMIN_EMAIL SENTRY_ADMIN_PASSWORD SENTRY_ADMIN_SUPERUSER
 }
 
 if command -v docker &>/dev/null && docker compose version &>/dev/null; then
@@ -112,6 +129,45 @@ $DC -f "${COMPOSE_FILE}" run --rm \
   -e SENTRY_REDIS_PASSWORD="$REDIS_PASSWORD" \
   -e SENTRY_SECRET_KEY="$SENTRY_SECRET_KEY" \
   sentry-web sentry upgrade --noinput
+
+if [[ -n "${SENTRY_ADMIN_EMAIL:-}" ]]; then
+  echo ""
+  echo "5) 尝试创建管理员账号（如已存在会跳过/提示）..."
+
+  SUPERUSER_FLAG="--superuser"
+  if [[ "${SENTRY_ADMIN_SUPERUSER:-}" != "1" && "${SENTRY_ADMIN_SUPERUSER:-}" != "true" && "${SENTRY_ADMIN_SUPERUSER:-}" != "yes" ]]; then
+    SUPERUSER_FLAG="--no-superuser"
+  fi
+
+  set +e
+  if [[ -n "${SENTRY_ADMIN_PASSWORD:-}" ]]; then
+    $DC -f "${COMPOSE_FILE}" run --rm \
+      -e SENTRY_POSTGRES_HOST="$SENTRY_POSTGRES_HOST" \
+      -e SENTRY_DB_NAME="$SENTRY_DB_NAME" \
+      -e SENTRY_DB_USER="$SENTRY_DB_USER" \
+      -e SENTRY_DB_PASSWORD="$SENTRY_DB_PASSWORD" \
+      -e SENTRY_REDIS_HOST="$SENTRY_REDIS_HOST" \
+      -e SENTRY_REDIS_PASSWORD="$REDIS_PASSWORD" \
+      -e SENTRY_SECRET_KEY="$SENTRY_SECRET_KEY" \
+      sentry-web sentry createuser --email "$SENTRY_ADMIN_EMAIL" --password "$SENTRY_ADMIN_PASSWORD" "$SUPERUSER_FLAG" --no-input
+  else
+    $DC -f "${COMPOSE_FILE}" run --rm \
+      -e SENTRY_POSTGRES_HOST="$SENTRY_POSTGRES_HOST" \
+      -e SENTRY_DB_NAME="$SENTRY_DB_NAME" \
+      -e SENTRY_DB_USER="$SENTRY_DB_USER" \
+      -e SENTRY_DB_PASSWORD="$SENTRY_DB_PASSWORD" \
+      -e SENTRY_REDIS_HOST="$SENTRY_REDIS_HOST" \
+      -e SENTRY_REDIS_PASSWORD="$REDIS_PASSWORD" \
+      -e SENTRY_SECRET_KEY="$SENTRY_SECRET_KEY" \
+      sentry-web sentry createuser --email "$SENTRY_ADMIN_EMAIL" --no-password "$SUPERUSER_FLAG" --no-input
+  fi
+  rc=$?
+  set -e
+  if [[ $rc -ne 0 ]]; then
+    echo "管理员创建可能已存在或创建失败（退出码：$rc）。你可以手动执行："
+    echo "  $DC -f ${COMPOSE_FILE} run --rm sentry-web sentry createuser"
+  fi
+fi
 
 echo
 echo "若需创建管理员："
