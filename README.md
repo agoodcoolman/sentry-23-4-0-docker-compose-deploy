@@ -13,6 +13,8 @@
 
 - `docker-compose.yml`：服务编排
 - `start.sh`：一键启动/初始化（会执行 `sentry upgrade`）
+- `README-INTEGRATION.md`：Sentry 使用与对接指南（创建项目/获取 DSN/前端与后端 SDK 接入/GitHub 集成要点）
+- `export-images.sh`：一键把本 `docker-compose.yml` 涉及到的所有镜像 `docker save` 打包为 tar（便于离线搬运），并给出 `docker load` 恢复命令
 - `sentry.conf.py`：挂载到容器 `/etc/sentry/sentry.conf.py` 的配置（用于覆盖镜像内默认配置）
 - `./data/*`：各组件的持久化目录
   - `./data/postgres`
