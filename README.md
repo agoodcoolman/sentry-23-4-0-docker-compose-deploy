@@ -12,10 +12,11 @@
 ## 2. 目录结构与持久化数据
 
 - `docker-compose.yml`：服务编排
-- `start.sh`：一键启动/初始化（会执行 `sentry upgrade`）
+- `start.sh`：初始化脚本（生成并保存 Redis 密码到 `.env.custom`，首次启动并执行 `sentry upgrade`）
+- `up.sh`：后续启动脚本（读取 `.env.custom`，仅执行 `docker compose up -d`，不执行迁移）
 - `README-INTEGRATION.md`：Sentry 使用与对接指南（创建项目/获取 DSN/前端与后端 SDK 接入/GitHub 集成要点）
 - `export-images.sh`：一键把本 `docker-compose.yml` 涉及到的所有镜像 `docker save` 打包为 tar（便于离线搬运），并给出 `docker load` 恢复命令
-- `sentry.conf.py`：挂载到容器 `/etc/sentry/sentry.conf.py` 的配置（用于覆盖镜像内默认配置）
+- `sentry.conf.py`：挂载到容器 `/etc/sentry/sentry.conf.py` 的配置（用于覆盖镜像内默认配置，并支持从 `SENTRY_REDIS_PASSWORD` 读取 Redis 密码）
 - `./data/*`：各组件的持久化目录
   - `./data/postgres`
   - `./data/redis`
@@ -24,7 +25,10 @@
   - `./data/zookeeper`
   - `./data/symbolicator`
 
-> 注意：`start.sh` 会自动创建这些目录。
+> 注意：
+>
+>- `start.sh` 会自动创建 `./data/*` 目录。
+>- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`），请不要提交到公开仓库。
 
 ## 3. 重要配置项（必须改）
 
@@ -103,7 +107,7 @@ docker compose -f docker-compose.yml exec -T sentry-web sh -c 'grep -n "SENTRY_T
 
 ## 4. 启动与初始化
 
-### 4.1 一键启动
+### 4.1 初始化（首次启动时执行）
 
 在项目目录执行：
 
@@ -113,10 +117,19 @@ sh start.sh
 
 脚本会做这些事：
 
+- 生成并保存 Redis 密码到 `.env.custom`（后续启动会复用）
 - `docker compose down --remove-orphans`
 - 启动依赖：postgres/redis/zookeeper/kafka/clickhouse
 - 启动 snuba + sentry + symbolicator
 - 执行初始化迁移：`sentry upgrade --noinput`
+
+### 4.1.1 后续启动（不执行迁移）
+
+后续日常启动只需执行：
+
+```bash
+sh up.sh
+```
 
 ### 4.2 创建管理员账号（首次登录必须）
 

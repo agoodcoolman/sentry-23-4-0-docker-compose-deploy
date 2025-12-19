@@ -18,11 +18,13 @@ services:
   redis:
     image: redis:6
     restart: always
-    command: ["redis-server", "--save", "900", "1", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
+    command: ["sh", "-c", "exec redis-server --save 900 1 --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
     volumes:
       - ./data/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -110,6 +112,7 @@ services:
       SENTRY_DB_USER: sentry
       SENTRY_DB_PASSWORD: sentry
       SENTRY_REDIS_HOST: redis
+      SENTRY_REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
       SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
     ports:
       - "9006:9000"
@@ -131,6 +134,7 @@ services:
       SENTRY_DB_USER: sentry
       SENTRY_DB_PASSWORD: sentry
       SENTRY_REDIS_HOST: redis
+      SENTRY_REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
       SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
     command: ["sentry", "run", "worker"]
 
