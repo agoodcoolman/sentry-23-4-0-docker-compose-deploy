@@ -1,0 +1,149 @@
+version: '3.7'
+services:
+  postgres:
+    image: postgres:13
+    restart: always
+    environment:
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: sentry
+      POSTGRES_DB: sentry
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:6
+    restart: always
+    command: ["redis-server", "--save", "900", "1", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - ./data/zookeeper:/var/lib/zookeeper/data
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    restart: always
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+    volumes:
+      - ./data/kafka:/var/lib/kafka/data
+    mem_limit: 1g
+    cpus: 0.5
+
+  clickhouse:
+    image: yandex/clickhouse-server:21.8
+    restart: always
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    mem_limit: 1536m
+    cpus: 1.0
+
+  snuba-api:
+    image: getsentry/snuba:23.4.0
+    restart: always
+    depends_on:
+      - clickhouse
+      - kafka
+    environment:
+      SNUBA_SETTINGS: snuba.settings
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOST: kafka
+    command: snuba-api
+    mem_limit: 512m
+    cpus: 0.5
+
+  snuba-consumer:
+    image: getsentry/snuba:23.4.0
+    restart: always
+    depends_on:
+      - snuba-api
+      - kafka
+      - clickhouse
+    environment:
+      SNUBA_SETTINGS: snuba.settings
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOST: kafka
+    command: snuba-consumer
+    mem_limit: 512m
+    cpus: 0.5
+
+  sentry-web:
+    image: getsentry/sentry:23.4.0
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+      - snuba-api
+    volumes:
+      - ./sentry.conf.py:/etc/sentry/sentry.conf.py:ro
+    environment:
+      SENTRY_SECRET_KEY: 'please-change-me-to-a-secure-key'
+      SENTRY_POSTGRES_HOST: postgres
+      SENTRY_DB_NAME: sentry
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: redis
+      SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
+    ports:
+      - "9006:9000"
+    command: ["sentry", "run", "web"]
+
+  sentry-worker:
+    image: getsentry/sentry:23.4.0
+    restart: always
+    depends_on:
+      - sentry-web
+      - redis
+      - postgres
+    volumes:
+      - ./sentry.conf.py:/etc/sentry/sentry.conf.py:ro
+    environment:
+      SENTRY_SECRET_KEY: 'please-change-me-to-a-secure-key'
+      SENTRY_POSTGRES_HOST: postgres
+      SENTRY_DB_NAME: sentry
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: redis
+      SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
+    command: ["sentry", "run", "worker"]
+
+  symbolicator:
+    image: getsentry/symbolicator:23.4.0
+    restart: always
+    ports:
+      - "3021:3021"
+    volumes:
+      - ./data/symbolicator:/data
+    environment:
+      SYMBOLICATOR_PROCESSING_TIMEOUT: 30
+
+networks:
+  default:
+    driver: bridge
