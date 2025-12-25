@@ -15,7 +15,7 @@
 - 你已经创建了管理员用户：
 
 ```bash
-docker compose -f docker-compose.yml run --rm sentry-web sentry createuser
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm sentry-web sentry createuser
 ```
 
 ---
@@ -284,3 +284,13 @@ Sentry 会在看到该提交/PR 并且它进入某个 release 后，把对应 Is
 1. 先接入最简单的 `@sentry/browser` 或 `@sentry/node`，确认 Issues 能收得到
 1. 再安装 GitHub Integration（优先走 UI 安装）
 1. 最后再做 release/commit/source map 自动化（CI 里做）
+
+---
+
+## 14. （重要）Relay + Nginx 与 Tunnel/DSN（避免 CSRF 403）
+
+当你使用浏览器 SDK 或通过后端 tunnel 转发 envelope 时，建议使用 `nginx -> relay -> sentry-web` 的链路作为对外入口。
+
+本仓库已提供对应的 `docker-compose.yml` 改造与配置文件，执行步骤见：
+
+- `README-RELAY-NGINX.md`

@@ -12,11 +12,11 @@
 ## 2. 目录结构与持久化数据
 
 - `docker-compose.yml`：服务编排
-- `start.sh`：初始化脚本（生成并保存关键配置到 `.env.custom`，首次启动并执行 `sentry upgrade`）
+- `start.sh`：初始化脚本（生成并保存 Redis 密码到 `.env.custom`，首次启动并执行 `sentry upgrade`）
 - `up.sh`：后续启动脚本（读取 `.env.custom`，仅执行 `docker compose up -d`，不执行迁移）
-- `README-INTEGRATION.md`：Sentry 使用与对接指南（创建项目/获取 DSN/前端与后端 SDK 接入/GitHub 集成要点）
+- `README-INTEGRATION.md`：Sentry 使用与对接指南（创建项目/获取 DSN/SDK 接入/GitHub 集成要点）
 - `export-images.sh`：一键把本 `docker-compose.yml` 涉及到的所有镜像 `docker save` 打包为 tar（便于离线搬运），并给出 `docker load` 恢复命令
-- `sentry.conf.py`：挂载到容器 `/etc/sentry/sentry.conf.py` 的配置（用于覆盖镜像内默认配置，并支持从 `SENTRY_REDIS_PASSWORD` 读取 Redis 密码）
+- `sentry.conf.py`：挂载到容器 `/etc/sentry/sentry.conf.py` 的配置（用于覆盖镜像内默认配置）
 - `./data/*`：各组件的持久化目录
   - `./data/postgres`
   - `./data/redis`
@@ -25,18 +25,13 @@
   - `./data/zookeeper`
   - `./data/symbolicator`
 
-> 注意：
->
->- `start.sh` 会自动创建 `./data/*` 目录。
->- `.env.custom` 是本地保存的运行参数（包含 `REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等；如你启用自动创建管理员，还可能包含管理员账号密码），请不要提交到公开仓库。
+> 注意：`start.sh` 会自动创建这些目录。
 
 ## 3. 重要配置项（必须改）
 
 ### 3.1 SENTRY_SECRET_KEY
 
-本项目会在首次执行 `start.sh` 时自动生成并写入 `.env.custom` 中的 `SENTRY_SECRET_KEY`。
-
-你也可以手动编辑 `.env.custom` 覆盖：
+你需要把 `docker-compose.yml` 里的 `SENTRY_SECRET_KEY` 改为强随机值。
 
 - **建议长度至少 32 位**
 - **不要在公开仓库暴露**
@@ -47,7 +42,9 @@
 openssl rand -hex 32
 ```
 
-然后把 `.env.custom` 里的 `SENTRY_SECRET_KEY` 改成该值。
+然后替换 `docker-compose.yml` 中的：
+
+- `SENTRY_SECRET_KEY: 'please-change-me-to-a-secure-key'`
 
 ### 3.2 端口
 
@@ -88,7 +85,7 @@ docker cp sentrynew-sentry-web-1:/etc/sentry/sentry.conf.py ./sentry.conf.py
 1. 修正错误的 TSDB 配置（把 `RedisSnubaTSDB` 替换为 `RedisTSDB`）：
 
 ```bash
-sed -i 's/sentry\\.tsdb\\.redis\\.RedisSnubaTSDB/sentry.tsdb.redis.RedisTSDB/g' ./sentry.conf.py
+sed -i 's/sentry\.tsdb\.redis\.RedisSnubaTSDB/sentry.tsdb.redis.RedisTSDB/g' ./sentry.conf.py
 grep -n "SENTRY_TSDB" ./sentry.conf.py
 ```
 
@@ -115,6 +112,19 @@ docker compose -f docker-compose.yml exec -T sentry-web sh -c 'grep -n "SENTRY_T
 sh start.sh
 ```
 
+如果你希望完全从 0 开始（危险，会清空本机数据），可以先清理：
+
+```bash
+rm -f ./.env.custom
+rm -rf ./data
+```
+
+然后再执行初始化脚本：
+
+```bash
+sh start.sh
+```
+
 脚本会做这些事：
 
 - 生成并保存关键配置到 `.env.custom`（后续启动会复用），包括：`REDIS_PASSWORD`、`SENTRY_SECRET_KEY`、`SENTRY_DB_*` 等
@@ -133,7 +143,7 @@ sh up.sh
 
 ### 4.1.2 修改配置如何生效（重要）
 
-本项目把关键配置持久化在 `.env.custom` 中。你可以直接编辑 `.env.custom` 来修改：
+本项目把关键配置持久化在 `.env.custom` 中，`start.sh` 会在首次执行时生成/写入（后续复用）。你可以直接编辑 `.env.custom` 来修改：
 
 - `SENTRY_SECRET_KEY`
 - `SENTRY_DB_NAME` / `SENTRY_DB_USER` / `SENTRY_DB_PASSWORD`
@@ -144,11 +154,13 @@ sh up.sh
 
 修改后让配置生效的方式：
 
-- **仅启动/拉起服务**（适用于容器已存在，只是停止了）：
+- **仅重启（适用于只想拉起/停止容器）**：
 
   ```bash
   sh up.sh
   ```
+
+  说明：`up.sh` 会加载 `.env.custom` 并执行 `docker compose up -d`。
 
 - **重建容器（推荐，确保环境变量一定刷新）**：
 
@@ -293,6 +305,21 @@ ClickHouse 建议按官方方式做数据目录级别备份，至少保证：
 
 - 需要先执行 `sentry createuser` 创建管理员
 
+如果执行 `createuser` 时提示 `The "REDIS_PASSWORD" variable is not set`，或者报错类似：
+
+- `AUTH <password> called without any password configured for the default user`
+
+说明你的命令没有加载本项目生成的 `.env.custom`，导致：
+
+- Redis 容器未启用密码（或密码为空）
+- 但 Sentry 仍尝试对 Redis AUTH
+
+按本项目方式执行：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm sentry-web sentry createuser
+```
+
 ### 8.2 `sentry upgrade` 连接数据库失败（127.0.0.1）
 
 如果日志出现类似：
@@ -323,6 +350,171 @@ docker compose -f docker-compose.yml logs -f symbolicator
 
 - Kafka/ClickHouse 未就绪
 - 资源不足（内存/磁盘）
+
+本项目的额外注意点（23.4.0）：
+
+- Snuba 的 `SNUBA_SETTINGS` 需要使用 `docker`
+- `snuba-api` 的 command 需要为 `api`
+- `snuba-consumer` 需要指定 `--storage`（例如 `errors`）
+- symbolicator 需要显式执行 `run`，否则可能只打印 help 后退出
+
+如果你手工调整过 `docker-compose.yml`，建议与仓库保持一致，并重建：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml up -d --force-recreate snuba-api snuba-consumer symbolicator
+```
+
+### 8.4 Zookeeper / Kafka 一直重启（目录不可写）
+
+如果日志出现：
+
+- `dub path /var/lib/zookeeper/data writable FAILED`
+- `Check if /var/lib/kafka/data is writable ... FAILED`
+
+说明挂载的宿主机目录对容器内 `uid=1000` 不可写。先在项目目录执行：
+
+```bash
+mkdir -p ./data/zookeeper ./data/kafka
+chown -R 1000:1000 ./data/zookeeper ./data/kafka
+chmod -R u+rwX,g+rwX,o-rwx ./data/zookeeper ./data/kafka
+```
+
+然后重建：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml up -d --force-recreate zookeeper kafka
+```
+
+### 8.5 Kafka 报 InconsistentClusterIdException
+
+如果 Kafka 日志出现：
+
+- `InconsistentClusterIdException: The Cluster ID ... doesn't match stored clusterId ... in meta.properties`
+
+表示 Zookeeper 中的 cluster.id 与 `./data/kafka/meta.properties` 中的不一致（常见于只清了一部分 data 目录）。
+
+从 0 开始部署时（允许清数据），可以按以下方式修复：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml stop kafka zookeeper
+rm -f ./data/kafka/meta.properties
+docker compose --env-file ./.env.custom -f docker-compose.yml up -d zookeeper kafka
+```
+
+如果仍不行，再彻底清理（会删除 Kafka/Zookeeper 数据）：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml stop kafka zookeeper
+rm -rf ./data/kafka/* ./data/zookeeper/*
+docker compose --env-file ./.env.custom -f docker-compose.yml up -d zookeeper kafka
+```
+
+### 8.6 Snuba 连接 Redis 失败（127.0.0.1:6379）
+
+典型报错：
+
+- `redis.exceptions.ConnectionError: Error 111 connecting to 127.0.0.1:6379. Connection refused`
+
+原因：
+
+- Snuba 在 `SNUBA_SETTINGS=docker` 场景下，如果没有显式传 `REDIS_HOST`，会默认连容器内 `127.0.0.1`。
+
+解决方案：
+
+- 确保 `docker-compose.yml` 中 `snuba-api`、`snuba-consumer` 都设置：
+  - `REDIS_HOST=redis`
+  - `REDIS_PORT=6379`
+  - `REDIS_PASSWORD=${REDIS_PASSWORD}`
+  - `REDIS_DB=1`
+
+### 8.7 Snuba bootstrap 报 `snuba.py` 不存在
+
+典型报错：
+
+- `FileNotFoundError: ... /usr/src/snuba/snuba/cli/snuba.py`
+
+原因：
+
+- `snuba-api` 镜像入口本身就是 `snuba`，如果命令写成 `... run snuba-api snuba bootstrap ...` 会变成 `snuba snuba bootstrap`。
+
+解决方案：
+
+- 使用下面的写法（不要重复写 `snuba`）：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm snuba-api bootstrap --force --bootstrap-server kafka:9092
+```
+
+### 8.8 Snuba consumer 报 Kafka topic 不存在（UNKNOWN_TOPIC_OR_PART）
+
+典型报错：
+
+- `Subscribed topic not available: events: Broker: Unknown topic or partition`
+
+原因：
+
+- Kafka topics 未创建（首次部署未执行 Snuba bootstrap）。
+
+解决方案：
+
+1. 确认 Kafka 就绪：
+
+   ```bash
+   docker compose --env-file ./.env.custom -f docker-compose.yml exec -T kafka bash -lc 'kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null && echo OK'
+   ```
+
+1. 执行 Snuba bootstrap（创建 topics + ClickHouse migrations）：
+
+   ```bash
+   docker compose --env-file ./.env.custom -f docker-compose.yml run --rm snuba-api bootstrap --force --bootstrap-server kafka:9092
+   ```
+
+1. 验证 topic：
+
+   ```bash
+   docker compose --env-file ./.env.custom -f docker-compose.yml exec kafka bash -lc 'kafka-topics --bootstrap-server kafka:9092 --describe --topic events'
+   ```
+
+备注：
+
+- 如果 `Creating Kafka topics...` 阶段出现 `Timed out CreateTopicsRequest in flight (after 1001ms)`，通常是 Kafka 刚启动还未完全 ready，等待 10~30 秒后重试即可。
+- 本仓库的 `start.sh` 已内置 Kafka ready 检测 + bootstrap 重试。
+
+### 8.9 Sentry Web 报 Snuba 连接失败（127.0.0.1:1218 Connection refused）
+
+典型报错：
+
+- `HTTPConnectionPool(host='127.0.0.1', port=1218): Failed to establish a new connection: [Errno 111] Connection refused`
+
+原因：
+
+- Sentry 23.4.0 默认从环境变量 `SNUBA` 读取 Snuba 地址，默认为 `http://127.0.0.1:1218`。
+
+解决方案：
+
+- 在 `docker-compose.yml` 中为 `sentry-web`、`sentry-worker` 显式设置：
+
+  - `SNUBA=http://snuba-api:1218`
+
+- 修改后重建容器让环境变量生效：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml up -d --force-recreate sentry-web sentry-worker
+```
+
+### 8.10 手工执行命令提示 `REDIS_PASSWORD variable is not set`
+
+原因：
+
+- 你在手工运行 `docker compose` / `docker-compose` 命令时，没有加载本项目生成的 `.env.custom`。
+
+解决方案：
+
+- 统一使用：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml <command>
+```
 
 ## 9. 访问地址
 
