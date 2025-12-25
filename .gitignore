@@ -1,0 +1,7 @@
+.env.custom
+.env
+.env.*
+
+data/
+*.tar
+backup_*.sql

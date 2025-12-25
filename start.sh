@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
+
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 COMPOSE_FILE="docker-compose.yml"
 ENV_FILE=".env.custom"
@@ -88,9 +96,9 @@ ensure_env_file() {
 }
 
 if command -v docker &>/dev/null && docker compose version &>/dev/null; then
-  DC="docker compose"
+  DC="docker compose --env-file ./.env.custom"
 elif command -v docker-compose &>/dev/null; then
-  DC="docker-compose"
+  DC="docker-compose --env-file ./.env.custom"
 else
   echo "未检测到 docker compose，请先安装 Docker Compose 或使用 Docker Desktop。"
   exit 1
@@ -106,19 +114,70 @@ $DC -f "${COMPOSE_FILE}" down --remove-orphans || true
 echo "准备数据目录..."
 mkdir -p ./data/postgres ./data/redis ./data/clickhouse ./data/kafka ./data/zookeeper ./data/symbolicator
 
+chown -R 1000:1000 ./data/zookeeper 2>/dev/null || true
+chmod -R u+rwX,g+rwX,o-rwx ./data/zookeeper || true
+
+chown -R 1000:1000 ./data/kafka 2>/dev/null || true
+chmod -R u+rwX,g+rwX,o-rwx ./data/kafka || true
+
+echo "准备 Relay/Nginx 配置目录..."
+mkdir -p ./nginx ./relay
+
+if [[ ! -f "./nginx/nginx.conf" ]]; then
+  echo "缺少 ./nginx/nginx.conf，请先创建该文件（用于 9006 入口反代）。"
+  exit 1
+fi
+
+if [[ ! -f "./relay/config.yml" ]]; then
+  echo "缺少 ./relay/config.yml，请先创建该文件（用于 Relay 配置）。"
+  exit 1
+fi
+
 echo "2) 启动依赖服务（后台）: postgres redis zookeeper kafka clickhouse"
 $DC -f "${COMPOSE_FILE}" up -d postgres redis zookeeper kafka clickhouse
 
 echo "等待 Postgres/Redis 等服务就绪（约 10-60s）..."
 sleep 20
 
-echo "3) 启动 Snuba 与 Sentry 服务（后台）..."
-$DC -f "${COMPOSE_FILE}" up -d snuba-api snuba-consumer symbolicator sentry-web sentry-worker
+echo "等待 Kafka 就绪（创建 topic 需要 controller ready）..."
+KAFKA_READY=0
+for i in $(seq 1 60); do
+  if $DC -f "${COMPOSE_FILE}" exec -T kafka bash -lc 'kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1'; then
+    KAFKA_READY=1
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$KAFKA_READY" != "1" ]]; then
+  echo "Kafka 在预期时间内未就绪，请检查 kafka/zookeeper 日志。"
+  exit 1
+fi
+
+echo "3) 初始化 Snuba（创建 Kafka topics + ClickHouse migrations）..."
+BOOTSTRAP_OK=0
+for i in $(seq 1 10); do
+  if $DC -f "${COMPOSE_FILE}" run --rm snuba-api bootstrap --force --bootstrap-server kafka:9092; then
+    BOOTSTRAP_OK=1
+    break
+  fi
+  echo "Snuba bootstrap 失败，等待 10s 后重试（${i}/10）..."
+  sleep 10
+done
+
+if [[ "$BOOTSTRAP_OK" != "1" ]]; then
+  echo "Snuba bootstrap 多次失败：Kafka topics 可能未创建，Snuba consumer 会持续报 UNKNOWN_TOPIC_OR_PART。"
+  echo "请优先检查 kafka 日志是否有权限/磁盘/clusterId 问题。"
+  exit 1
+fi
+
+echo "4) 启动 Snuba 与 Sentry 服务（后台），并拉起 Relay/Nginx 入口..."
+$DC -f "${COMPOSE_FILE}" up -d snuba-api snuba-consumer symbolicator sentry-web sentry-worker relay nginx
 
 echo "等待服务稳定（10s）..."
 sleep 10
 
-echo "4) 运行 Sentry migrations (sentry upgrade)..."
+echo "5) 运行 Sentry migrations (sentry upgrade)..."
 # 明确覆盖 SENTRY_DB_HOST 与 SENTRY_TSDB，防止运行时被覆盖或 race
 $DC -f "${COMPOSE_FILE}" run --rm \
   -e SENTRY_POSTGRES_HOST="$SENTRY_POSTGRES_HOST" \
@@ -132,7 +191,7 @@ $DC -f "${COMPOSE_FILE}" run --rm \
 
 if [[ -n "${SENTRY_ADMIN_EMAIL:-}" ]]; then
   echo ""
-  echo "5) 尝试创建管理员账号（如已存在会跳过/提示）..."
+  echo "6) 尝试创建管理员账号（如已存在会跳过/提示）..."
 
   SUPERUSER_FLAG="--superuser"
   if [[ "${SENTRY_ADMIN_SUPERUSER:-}" != "1" && "${SENTRY_ADMIN_SUPERUSER:-}" != "true" && "${SENTRY_ADMIN_SUPERUSER:-}" != "yes" ]]; then
@@ -174,5 +233,5 @@ echo "若需创建管理员："
 echo "  $DC -f ${COMPOSE_FILE} run --rm sentry-web sentry createuser"
 echo
 echo "Web UI: http://localhost:9006"
-echo "查看日志： $DC -f ${COMPOSE_FILE} logs -f sentry-web"
+echo "查看日志： $DC -f ${COMPOSE_FILE} logs -f nginx"
 echo "停止并清理数据： $DC -f ${COMPOSE_FILE} down -v"
