@@ -37,6 +37,7 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     volumes:
       - ./data/zookeeper:/var/lib/zookeeper/data
+      - ./data/zookeeper-log:/var/lib/zookeeper/log
 
   kafka:
     image: confluentinc/cp-kafka:7.0.1
@@ -50,10 +51,16 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+      CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: "72"
+      KAFKA_LOG_RETENTION_BYTES: "5368709120"
+      KAFKA_LOG_SEGMENT_BYTES: "268435456"
     volumes:
       - ./data/kafka:/var/lib/kafka/data
     mem_limit: 1g
-    cpus: 0.5
+    cpus: 1.0
 
   clickhouse:
     image: yandex/clickhouse-server:21.8
@@ -174,6 +181,28 @@ services:
       SNUBA: "http://snuba-api:1218"
     command: ["sentry", "run", "worker"]
 
+  sentry-ingest-consumer:
+    image: getsentry/sentry:23.4.0
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - snuba-api
+    volumes:
+      - ./sentry.conf.py:/etc/sentry/sentry.conf.py:ro
+    environment:
+      SENTRY_SECRET_KEY: ${SENTRY_SECRET_KEY:-please-change-me-to-a-secure-key}
+      SENTRY_POSTGRES_HOST: ${SENTRY_POSTGRES_HOST:-postgres}
+      SENTRY_DB_NAME: ${SENTRY_DB_NAME:-sentry}
+      SENTRY_DB_USER: ${SENTRY_DB_USER:-sentry}
+      SENTRY_DB_PASSWORD: ${SENTRY_DB_PASSWORD:-sentry}
+      SENTRY_REDIS_HOST: ${SENTRY_REDIS_HOST:-redis}
+      SENTRY_REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
+      SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
+      SNUBA: "http://snuba-api:1218"
+    command: ["sentry", "run", "ingest-consumer", "--consumer-type", "events", "--consumer-type", "transactions"]
+
   symbolicator:
     image: getsentry/symbolicator:23.4.0
     restart: always
@@ -184,6 +213,26 @@ services:
       - ./data/symbolicator:/data
     environment:
       SYMBOLICATOR_PROCESSING_TIMEOUT: 30
+
+  snuba-consumer-transactions:
+    image: getsentry/snuba:23.4.0
+    restart: always
+    depends_on:
+      - snuba-api
+      - kafka
+      - clickhouse
+    environment:
+      SNUBA_SETTINGS: docker
+      DEFAULT_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
+      REDIS_DB: 1
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOST: kafka
+    command: ["consumer", "--storage", "transactions", "--auto-offset-reset", "latest"]
+    mem_limit: 512m
+    cpus: 0.5
 
 networks:
   default:
