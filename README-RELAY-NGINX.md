@@ -43,8 +43,13 @@
 
 当前使用：
 
-- `relay.mode: proxy`
+- `relay.mode: managed`
 - `upstream: http://sentry-web:9000/`
+- `relay.credentials: /work/.relay/credentials.json`
+
+同时需要在宿主机生成：
+
+- `./relay/credentials.json`
 
 ---
 
@@ -101,6 +106,21 @@ sh start.sh
 
 # 如果你不想跑 start.sh（不跑迁移），则：
 # sh up.sh
+```
+
+### 3.4 手动创建 relay/credentials.json（如 start.sh 未自动生成）
+
+> 注意：不要直接用 `> ./relay/credentials.json` 重定向写入同一个文件。
+> 因为 shell 会先创建/清空文件，relay 会读取到空文件并报：`could not parse json config file ... EOF`。
+
+推荐使用临时文件再移动：
+
+```bash
+rm -f ./relay/credentials.json ./relay/credentials.json.tmp
+docker compose --env-file ./.env.custom -f docker-compose.yml pull relay
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm --no-deps -T relay \
+  credentials generate --stdout > ./relay/credentials.json.tmp \
+  && mv ./relay/credentials.json.tmp ./relay/credentials.json
 ```
 
 ---

@@ -516,6 +516,79 @@ docker compose --env-file ./.env.custom -f docker-compose.yml up -d --force-recr
 docker compose --env-file ./.env.custom -f docker-compose.yml <command>
 ```
 
+### 8.11 Snuba bootstrap 报 Kafka `_TIMED_OUT`，但服务实际正常
+
+现象：
+
+- 执行 `snuba-api bootstrap` 时出现类似报错：
+  - `cimpl.KafkaException: KafkaError{code=_TIMED_OUT,..."Failed while waiting for response from broker"}`
+- 但 `docker ps` 看起来容器都在跑，Sentry Web UI 也能访问。
+
+原因（常见）：
+
+- 低资源/启动抖动时，Kafka 对 `CreateTopics` 请求响应变慢，Snuba 的 AdminClient 超时。
+- 该超时可能发生在“创建 topics 的过程中/尾部”，并不一定代表 topics 没创建成功。
+
+如何判断是否可以忽略：
+
+1. Kafka topic 已存在（至少应包含 `events`/`transactions`/`snuba-commit-log` 等）：
+
+   ```bash
+   docker compose --env-file ./.env.custom -f docker-compose.yml exec -T kafka \
+     bash -lc 'kafka-topics --bootstrap-server localhost:9092 --list | egrep "^(events|transactions|snuba-commit-log)$"'
+   ```
+
+2. Snuba consumer 正常消费（能看到分区分配，且不再持续刷 Kafka/UNKNOWN_TOPIC 错误）：
+
+   ```bash
+   docker compose --env-file ./.env.custom -f docker-compose.yml logs --tail=200 snuba-consumer \
+     | egrep -i "assigned|unknown topic|fail|error|kafka" || true
+   ```
+
+3. Sentry Web UI 可访问（例如 `9006` 返回 302/200 均可）：
+
+   ```bash
+   curl -I http://127.0.0.1:9006/
+   ```
+
+满足以上 3 点，一般可以先继续（尤其是你已经能正常进入 Web UI、Kafka topics 也齐全的情况）。
+
+什么时候需要补救（必须处理）：
+
+- `snuba-consumer` 持续报：
+  - `UNKNOWN_TOPIC_OR_PART` / `Subscribed topic not available` / `Name or service not known` / `Connection refused`
+- Kafka `--list` 看不到关键 topics（如 `events`/`transactions`/`snuba-commit-log`）。
+- Sentry 侧一直 ingest 不进来（前端报 502/relay 报错、Snuba consumer 无分区分配）。
+
+补救方式 A：重跑 Snuba bootstrap（推荐优先尝试）
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm snuba-api bootstrap --force --bootstrap-server kafka:9092
+```
+
+补救方式 B：手动创建关键 topics（bootstrap 仍不稳定时使用）
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml exec -T kafka bash -lc \
+  'for t in events transactions snuba-commit-log event-replacements outcomes; do \
+     kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic "$t" --partitions 1 --replication-factor 1; \
+   done'
+```
+
+然后再重跑一次 bootstrap，让其补齐剩余 topics + 执行 ClickHouse migrations：
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml run --rm snuba-api bootstrap --force --bootstrap-server kafka:9092
+```
+
+补充：snuba-api 容器没有 `curl` 如何做健康检查
+
+```bash
+docker compose --env-file ./.env.custom -f docker-compose.yml exec -T snuba-api \
+  python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:1218/health').read().decode())"
+```
+
 ## 9. 访问地址
 
 - Web UI: `http://<server-ip>:9006`
+
