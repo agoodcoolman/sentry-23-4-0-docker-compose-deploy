@@ -79,5 +79,18 @@ fi
 echo "使用 $ENV_FILE 启动/拉起服务（不执行迁移）..."
 $DC -f "${COMPOSE_FILE}" up -d
 
+
+echo "等待服务启动..."
+sleep 50
+# 直接启动的话，zookeeper 等启动好了再启动kafka队列   再启动消费者
+echo "按照顺序重启 zookeeper kafka 消费者队列..."
+
+$DC -f "${COMPOSE_FILE}" restart zookeeper
+sleep 10
+$DC -f "${COMPOSE_FILE}" restart kafka
+sleep 10
+$DC -f "${COMPOSE_FILE}" restart sentry-ingest-consumer snuba-consumer snuba-consumer-transactions
+sleep 10
+
 echo "完成。Web UI: http://localhost:9006"
 echo "查看日志： $DC -f ${COMPOSE_FILE} logs -f nginx"
