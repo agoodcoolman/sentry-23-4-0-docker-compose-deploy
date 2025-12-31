@@ -2,8 +2,8 @@
 set -eu
 
 # 你的 Sentry 地址
-SENTRY_URL="http://192.168.3.153:9006"
-SENTRY_AUTH_TOKEN="46a1b416855b47edbe8cf55bc76a579ee2c68c8d78954226811d4f68acaf9bdf"
+SENTRY_URL="http://192.168:9006"
+SENTRY_AUTH_TOKEN=""
 SENTRY_ORG="sentry"
 SENTRY_PROJECT="javascript-vue"
 
@@ -19,6 +19,7 @@ if [ -z "$VERSION" ]; then
   echo "[ERROR] No version directory found in $DIST_DIR" >&2
   exit 1
 fi
+
 
 # 拼接完整的 RELEASE 名称
 RELEASE="$VERSION"
@@ -79,9 +80,13 @@ docker run --rm \
   --org "$SENTRY_ORG" || true
 
 # ======= [修改点 3: 上传完毕删除本地 .map 文件] =======
-echo "[INFO] Cleaning up SourceMaps in $UPLOAD_DIR ..."
-find "$UPLOAD_DIR" -name "*.map" -type f -delete
-echo "[INFO] All .map files deleted. (JS files kept)"
+if [ -d "$UPLOAD_DIR" ]; then
+  echo "[INFO] Upload finished. Deleting version directory: $UPLOAD_DIR"
+  rm -rf "$UPLOAD_DIR"
+  echo "[INFO] Directory deleted successfully."
+else
+  echo "[WARN] Directory $UPLOAD_DIR not found, nothing to delete."
+fi
 # =================================================
 
 echo "[INFO] Upload and Cleanup done."
