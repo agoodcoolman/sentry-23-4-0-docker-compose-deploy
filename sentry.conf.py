@@ -74,6 +74,17 @@ SENTRY_EVENTSTREAM_OPTIONS = {"producer_configuration": DEFAULT_KAFKA_OPTIONS}
 
 KAFKA_CLUSTERS["default"] = DEFAULT_KAFKA_OPTIONS
 
+
+
+# 设置全局事件（错误日志）保留天数 仅仅设置 SENTRY_EVENT_RETENTION_DAYS 是不够的，它只是告诉 Sentry 超过这个时间的数据“可以删除了”
+# 还需要在docker-compose.yml 中增加定时的服务，来定期来清理30天以前的数据。sentry-cleanup
+SENTRY_EVENT_RETENTION_DAYS = 30
+
+
+# 设置 Replay 录屏 7 天过期
+SENTRY_REPLAYS_RETENTION_DAYS = 7
+
+
 ##################
 
 ###########

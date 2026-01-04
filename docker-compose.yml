@@ -233,6 +233,27 @@ services:
     command: ["consumer", "--storage", "transactions", "--auto-offset-reset", "latest"]
     mem_limit: 512m
     cpus: 0.5
+    
+  # 定期启动的清理程序。清理超过 30 天的数据
+  sentry-cleanup:
+    image: getsentry/sentry:23.4.0
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./sentry.conf.py:/etc/sentry/sentry.conf.py:ro
+    environment:
+      SENTRY_SECRET_KEY: ${SENTRY_SECRET_KEY:-please-change-me-to-a-secure-key}
+      SENTRY_POSTGRES_HOST: ${SENTRY_POSTGRES_HOST:-postgres}
+      SENTRY_DB_NAME: ${SENTRY_DB_NAME:-sentry}
+      SENTRY_DB_USER: ${SENTRY_DB_USER:-sentry}
+      SENTRY_DB_PASSWORD: ${SENTRY_DB_PASSWORD:-sentry}
+      SENTRY_REDIS_HOST: ${SENTRY_REDIS_HOST:-redis}
+      SENTRY_REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
+    # 每 86400 秒 (24小时) 运行一次清理任务，保留 30 天数据
+    entrypoint: /bin/bash
+    command: ["-c", "while true; do sentry cleanup --days 30; sleep 86400; done"]  
 
 networks:
   default:
