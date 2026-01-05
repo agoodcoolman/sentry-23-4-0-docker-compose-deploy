@@ -201,7 +201,7 @@ services:
       SENTRY_REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
       SENTRY_TSDB: "sentry.tsdb.redis.RedisTSDB"
       SNUBA: "http://snuba-api:1218"
-    command: ["sentry", "run", "ingest-consumer", "--consumer-type", "events", "--consumer-type", "transactions"]
+    command: ["sentry", "run", "ingest-consumer", "--consumer-type", "events", "--consumer-type", "transactions", "--consumer-type", "replays"]
 
   symbolicator:
     image: getsentry/symbolicator:23.4.0
@@ -233,6 +233,27 @@ services:
     command: ["consumer", "--storage", "transactions", "--auto-offset-reset", "latest"]
     mem_limit: 512m
     cpus: 0.5
+
+  snuba-consumer-replays:
+    image: getsentry/snuba:23.4.0
+    restart: always
+    depends_on:
+      - snuba-api
+      - kafka
+      - clickhouse
+    environment:
+      SNUBA_SETTINGS: docker
+      DEFAULT_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-please-change-me}
+      REDIS_DB: 1
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOST: kafka
+    # 核心：这里指定 storage 为 replays
+    command: ["consumer", "--storage", "replays", "--auto-offset-reset", "latest"]
+    mem_limit: 512m
+    cpus: 0.5  
     
   # 定期启动的清理程序。清理超过 30 天的数据
   sentry-cleanup:
