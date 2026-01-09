@@ -1,0 +1,15 @@
+relay:
+  upstream: "http://nginx/"
+  host: 0.0.0.0
+  port: 3000
+logging:
+  level: debug
+  log_failed_payloads: true
+  format: json
+processing:
+  enabled: true
+  kafka_config:
+    - {name: "bootstrap.servers", value: "kafka:9092"}
+    - {name: "message.max.bytes", value: 50000000}
+  redis: redis://:${REDIS_PASSWORD}@redis:6379
+  geoip_path: "/geoip/GeoLite2-City.mmdb"
