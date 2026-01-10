@@ -264,11 +264,165 @@ SDK（replay envelope）→ `relay` → Kafka → `ingest-replay-recordings` →
 保持与你现有项目一致：
 
 - 对外：`http://<host>:9006`
-- 容器内：web 仍为 9000，由 nginx/relay 处理入口
+- 容器内：web 使用 9006，由 nginx/relay 处理入口
 
 ---
 
-## 11. 你需要我确认的点（你回复我即可）
+## 11. 启动后配置流程（对齐官方 self-hosted 的使用方式）
+
+下面流程用于“服务已启动（`start.sh` 或 `up.sh` 执行完成）”之后，把 Sentry 配置到可接入前端（错误/性能/Replay）。
+
+### 11.1 创建管理员账号（首次）
+
+方式 A：交互式创建（推荐）
+
+```bash
+docker compose --env-file ./.env.custom run --rm web createuser
+```
+
+方式 B：进入容器内创建
+
+```bash
+docker compose --env-file ./.env.custom exec web sentry createuser
+```
+
+创建完成后访问：
+
+- `http://<host>:9006`
+
+### 11.2 创建 Organization / Project
+
+登录后：
+
+- 创建一个 **Organization**（组织）
+- 创建一个 **Project**（项目）
+
+建议项目平台选择与你的接入一致（例如 Browser / Vue / React 等）。
+
+### 11.3 获取 DSN
+
+在项目页面：
+
+- Settings -> Projects -> 你的项目 -> Client Keys (DSN)
+
+复制 DSN（形如 `https://<publicKey>@<host>:9006/<projectId>`）。
+
+注意：self-hosted 场景下 DSN 的 host 通常就是你的对外域名或 IP + 端口（默认 9006）。
+
+### 11.4 前端接入（错误 + 性能 + Replay）
+
+下面以浏览器 JS SDK 为例（框架 SDK 的核心配置一致）。
+
+1. 安装依赖
+
+```bash
+npm i @sentry/browser @sentry/tracing @sentry/replay
+```
+
+1. 初始化（示例）
+
+```js
+import * as Sentry from "@sentry/browser";
+import { BrowserTracing } from "@sentry/tracing";
+import { Replay } from "@sentry/replay";
+
+Sentry.init({
+  dsn: "<你的DSN>",
+  integrations: [
+    new BrowserTracing(),
+    new Replay(),
+  ],
+  tracesSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+});
+```
+
+参数建议：
+
+- **`tracesSampleRate`**：性能采样率，生产环境建议从 `0.01~0.2` 起。
+- **`replaysSessionSampleRate`**：Replay 日常采样率。
+- **`replaysOnErrorSampleRate`**：发生错误时的 Replay 采样率（通常设置更高）。
+
+### 11.5 Replay/性能数据的后端服务检查
+
+Replay 和性能需要对应消费者正常运行。你当前 compose 已包含：
+
+- `ingest-replay-recordings`
+- `snuba-replays-consumer`
+- `snuba-transactions-consumer`
+- `transactions-consumer`
+
+快速检查：
+
+```bash
+docker compose --env-file ./.env.custom ps
+docker compose --env-file ./.env.custom logs --tail=200 ingest-replay-recordings
+docker compose --env-file ./.env.custom logs --tail=200 snuba-replays-consumer
+docker compose --env-file ./.env.custom logs --tail=200 snuba-transactions-consumer
+```
+
+### 11.6 （可选）上传 SourceMap（前端线上可读栈）
+
+推荐用 `getsentry/sentry-cli`（不在宿主机安装）：
+
+```bash
+docker run --rm -it \
+  -e SENTRY_URL="http://<host>:9006" \
+  -e SENTRY_AUTH_TOKEN="<token>" \
+  -e SENTRY_ORG="<org_slug>" \
+  -e SENTRY_PROJECT="<project_slug>" \
+  -v "$(pwd):/work" \
+  getsentry/sentry-cli:2.50.0 \
+  --help
+```
+
+`SENTRY_AUTH_TOKEN` 在 Sentry UI 的 User Settings -> API Keys / Auth Tokens 中创建。
+
+---
+
+## 12. 精简容器（仅 Errors / Transactions / Replays）与资源限制
+
+你当前目录下新增了 `docker-compose.override.yml`，用于在不改动主 `docker-compose.yml` 的前提下：
+
+- 默认不启动 **Profiling** 相关服务
+- 默认不启动 **Metrics** 相关服务
+- 默认不启动 **Issue Platform / Occurrences** 相关服务
+- 同时给核心服务加了 `mem_limit` / `cpus` 限制（适配约 200 人规模使用）
+
+### 12.1 默认行为
+
+`docker compose up -d` 会自动加载 `docker-compose.override.yml`，因此上述服务默认不会启动。
+
+### 12.2 如需临时开启 Profiling / Metrics
+
+手动带 profile 启动即可：
+
+```bash
+docker compose --env-file ./.env.custom --profile profiling --profile metrics up -d
+```
+
+仅开启某一个：
+
+```bash
+docker compose --env-file ./.env.custom --profile profiling up -d
+```
+
+```bash
+docker compose --env-file ./.env.custom --profile metrics up -d
+```
+
+### 12.3 资源限制说明
+
+资源限制写在 `docker-compose.override.yml` 里（`mem_limit` / `cpus`）。如果你机器内存较小（例如 8G 或更低），我建议你把：
+
+- `clickhouse`、`kafka`、`web/worker` 这些服务的上限再调低一些
+
+你把服务器的 CPU 核数和内存大小告诉我，我可以再帮你给一套更贴合的上限值。
+
+---
+
+## 13. 你需要我确认的点（你回复我即可）
 
 在我开始写脚本/compose 之前，你确认以下问题，能避免后续返工：
 
@@ -286,7 +440,6 @@ SDK（replay envelope）→ `relay` → Kafka → `ingest-replay-recordings` →
 - 已完成：确认 `d:\project\sentry-23.12.0` 为空目录；已读取你现有 `23.4.0` 的 `start.sh/up.sh` 结构；已获取官方 `23.12.0` 的 compose/install/README/config 示例作为基准。
 - 待你确认：本 README 的方案方向与 Q1-Q3。
 - 你确认后我会开始：生成 `docker-compose.yml`、`start.sh`、`up.sh`、必要的配置目录与默认配置文件，并确保全部数据映射到 `./sentrydata/`。
-
 
 一个小众可以用的代理站 docker pull hub.rat.dev/tianon/exim4:latest
 改名字：docker tag hub.rat.dev/tianon/exim4:latest tianon/exim4:latest

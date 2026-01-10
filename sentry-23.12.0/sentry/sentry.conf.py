@@ -56,7 +56,7 @@ SENTRY_RELEASE_HEALTH = "sentry.release_health.metrics.MetricsReleaseHealthBacke
 SENTRY_RELEASE_MONITOR = "sentry.release_health.release_monitor.metrics.MetricReleaseMonitorBackend"
 
 SENTRY_WEB_HOST = "0.0.0.0"
-SENTRY_WEB_PORT = 9000
+SENTRY_WEB_PORT = 9006
 
 SENTRY_OPTIONS["mail.list-namespace"] = env("SENTRY_MAIL_HOST", "localhost")
 SENTRY_OPTIONS["mail.from"] = f"sentry@{SENTRY_OPTIONS['mail.list-namespace']}"

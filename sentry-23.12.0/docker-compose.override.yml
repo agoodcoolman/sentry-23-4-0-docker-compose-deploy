@@ -1,0 +1,363 @@
+services:
+  vroom:
+    profiles: ["profiling"]
+  vroom-cleanup:
+    profiles: ["profiling"]
+  ingest-profiles:
+    profiles: ["profiling"]
+  snuba-profiling-profiles-consumer:
+    profiles: ["profiling"]
+  snuba-profiling-functions-consumer:
+    profiles: ["profiling"]
+
+  metrics-consumer:
+    profiles: ["metrics"]
+  generic-metrics-consumer:
+    profiles: ["metrics"]
+  billing-metrics-consumer:
+    profiles: ["metrics"]
+  snuba-metrics-consumer:
+    profiles: ["metrics"]
+  snuba-generic-metrics-distributions-consumer:
+    profiles: ["metrics"]
+  snuba-generic-metrics-sets-consumer:
+    profiles: ["metrics"]
+  snuba-generic-metrics-counters-consumer:
+    profiles: ["metrics"]
+  snuba-subscription-consumer-metrics:
+    profiles: ["metrics"]
+  subscription-consumer-metrics:
+    profiles: ["metrics"]
+  subscription-consumer-generic-metrics:
+    profiles: ["metrics"]
+
+  snuba-issue-occurrence-consumer:
+    profiles: ["issue_platform"]
+  ingest-occurrences:
+    profiles: ["issue_platform"]
+  post-process-forwarder-issue-platform:
+    profiles: ["issue_platform"]
+
+  web:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "1536m"
+    cpus: "1.0"
+
+  worker:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "1536m"
+    cpus: "1.0"
+
+  cron:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  events-consumer:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  attachments-consumer:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  transactions-consumer:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  ingest-replay-recordings:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  post-process-forwarder-errors:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  post-process-forwarder-transactions:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  subscription-consumer-events:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "384m"
+    cpus: "0.25"
+
+  subscription-consumer-transactions:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "384m"
+    cpus: "0.25"
+
+  sentry-cleanup:
+    environment:
+      VROOM: "http://vroom:8085"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - memcached
+      - smtp
+      - snuba-api
+      - snuba-consumer
+      - snuba-outcomes-consumer
+      - snuba-transactions-consumer
+      - snuba-replays-consumer
+      - snuba-subscription-consumer-events
+      - snuba-subscription-consumer-transactions
+      - snuba-replacer
+      - symbolicator
+    mem_limit: "256m"
+    cpus: "0.10"
+
+  postgres:
+    mem_limit: "1536m"
+    cpus: "1.0"
+
+  redis:
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  zookeeper:
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  kafka:
+    mem_limit: "2048m"
+    cpus: "1.0"
+
+  clickhouse:
+    mem_limit: "4096m"
+    cpus: "2.0"
+
+  snuba-api:
+    mem_limit: "1024m"
+    cpus: "0.75"
+
+  snuba-consumer:
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  snuba-outcomes-consumer:
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  snuba-transactions-consumer:
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  snuba-replays-consumer:
+    mem_limit: "768m"
+    cpus: "0.5"
+
+  snuba-replacer:
+    mem_limit: "384m"
+    cpus: "0.25"
+
+  snuba-subscription-consumer-events:
+    mem_limit: "384m"
+    cpus: "0.25"
+
+  snuba-subscription-consumer-transactions:
+    mem_limit: "384m"
+    cpus: "0.25"
+
+  symbolicator:
+    mem_limit: "1024m"
+    cpus: "0.5"
+
+  relay:
+    mem_limit: "512m"
+    cpus: "0.25"
+
+  nginx:
+    mem_limit: "256m"
+    cpus: "0.10"
+
+  memcached:
+    mem_limit: "256m"
+    cpus: "0.10"
+
+  smtp:
+    mem_limit: "256m"
+    cpus: "0.10"
