@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../sentry"
+		},
+		{
+			"path": "../../workspace/jiwei-xunshixuncha"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}

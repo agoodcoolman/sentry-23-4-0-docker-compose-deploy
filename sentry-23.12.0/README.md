@@ -286,3 +286,7 @@ SDK（replay envelope）→ `relay` → Kafka → `ingest-replay-recordings` →
 - 已完成：确认 `d:\project\sentry-23.12.0` 为空目录；已读取你现有 `23.4.0` 的 `start.sh/up.sh` 结构；已获取官方 `23.12.0` 的 compose/install/README/config 示例作为基准。
 - 待你确认：本 README 的方案方向与 Q1-Q3。
 - 你确认后我会开始：生成 `docker-compose.yml`、`start.sh`、`up.sh`、必要的配置目录与默认配置文件，并确保全部数据映射到 `./sentrydata/`。
+
+
+一个小众可以用的代理站 docker pull hub.rat.dev/tianon/exim4:latest
+改名字：docker tag hub.rat.dev/tianon/exim4:latest tianon/exim4:latest
